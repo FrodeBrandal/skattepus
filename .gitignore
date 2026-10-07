@@ -35,4 +35,7 @@ build/
 ### Secrets — privatnoklar og secret.yml skal ALDRI i git (holdast lokalt, jf. README) ###
 src/main/resources/keys/*-private.pem
 src/main/resources/keys/secret.yml
+src/main/resources/keys/live-testdata.properties
+# Testnøklar blir genererte ved köyring (sjá TestPrivateKeys), skal aldri committast
+**/keys/*-private.pem
 .DS_Store

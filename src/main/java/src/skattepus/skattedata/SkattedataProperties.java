@@ -6,11 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Tilgjengelege Skatteetaten-API for testing. Kvar oppføring har sin eigen
- * Maskinporten-scope (rettigheitspakke), base-URL og stiltemplate med
- * `{placeholder}`-segment som testkontrollaren fyller ut.
+ * Available Skatteetaten APIs for testing. Each entry has its own Maskinporten
+ * scope, base URL and path template with `{placeholder}` segments that the test
+ * controller fills in.
  *
- * @param apis kart over API-nytsel (t.d. "mvafastsetting") til konfigurasjon
+ * @param apis map from API name (e.g. "mvafastsetting") to configuration
  */
 @ConfigurationProperties(prefix = "skattepus.skatteetaten")
 public record SkattedataProperties(Map<String, ApiConfig> apis) {
@@ -22,11 +22,11 @@ public record SkattedataProperties(Map<String, ApiConfig> apis) {
     }
 
     /**
-     * Konfigurasjon for eitt Skatteetaten-API.
+     * Configuration for one Skatteetaten API.
      *
-     * @param scope        Maskinporten-scope for API-et, t.d. {@code skatteetaten:mvafastsetting}
-     * @param baseUrl      base-URL til API-et, t.d. {@code https://mvafastsetting.api.skatteetaten-test.no/v1}
-     * @param pathTemplate stiltemplate med {placeholder}-segment, t.d. {@code /{rettighetspakke}/fastsettinger/{organisasjonsnummer}}
+     * @param scope        Maskinporten scope for the API, e.g. {@code skatteetaten:mvafastsetting}
+     * @param baseUrl      base URL of the API, e.g. {@code https://mvafastsetting.api.skatteetaten-test.no/v1}
+     * @param pathTemplate path template with {placeholder} segments, e.g. {@code /{rettighetspakke}/fastsettinger/{organisasjonsnummer}}
      */
     public record ApiConfig(String scope, String baseUrl, String pathTemplate) {
     }

@@ -2,6 +2,7 @@ package src.skattepus.skattedata;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -9,50 +10,57 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 import src.skattepus.maskinporten.MaskinportenAccessTokenProvider;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Enkel Bearer-token-klient for å teste Skatteetaten sine DELING-api mot test- eller
- * prod-miljø. Hentar token per scope via Maskinporten, og returnerer status + ru body
- * (og Korrelasjonsid) slik at ein kan verifisere tilgang og rådata utan domenetypar.
+ * Simple Bearer token client for testing the Skatteetaten APIs against the test or
+ * prod environment. Fetches a token per scope via Maskinporten, and returns the
+ * status, raw body and Korrelasjonsid so access and raw data can be verified without
+ * domain types.
  */
 @Service
 public class SkattedataClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(SkattedataClient.class);
-    private static final DateTimeFormatter KORRELASJONSID_FMT =
-            DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSSX", Locale.ENGLISH);
 
     private final RestClient restClient;
     private final MaskinportenAccessTokenProvider tokenProvider;
 
     /**
-     * Constructs the client.
+     * Constructs the client with the default RestClient.
      *
-     * @param tokenProvider provider som levererar Maskinporten-token per scope
+     * @param tokenProvider provider supplying Maskinporten tokens per scope
      */
+    @Autowired
     public SkattedataClient(MaskinportenAccessTokenProvider tokenProvider) {
-        this.tokenProvider = tokenProvider;
-        this.restClient = RestClient.create();
+        this(tokenProvider, RestClient.builder());
     }
 
     /**
-     * Utfører ein GET mot API-et med Bearer-token for API-et sin scope.
+     * Constructs the client with an explicit builder, for testability and eventual
+     * shared configuration (timeouts, proxies).
      *
-     * @param api          API-konfigurasjonen (scope, base-URL, ferdig path)
-     * @param queryParams  eventuelle query-parameter (kan vere tom)
-     * @return statuskode, rå body og Korrelasjonsid frå Svarte-Mila
+     * @param tokenProvider     provider supplying Maskinporten tokens per scope
+     * @param restClientBuilder the builder to use for the HTTP calls
+     */
+    public SkattedataClient(MaskinportenAccessTokenProvider tokenProvider, RestClient.Builder restClientBuilder) {
+        this.tokenProvider = tokenProvider;
+        this.restClient = restClientBuilder.build();
+    }
+
+    /**
+     * Performs a GET against the API with a Bearer token for the API scope.
+     *
+     * @param api         the API configuration (scope and base URL)
+     * @param path        the resolved path from the path template
+     * @param queryParams optional query parameters (may be empty)
+     * @return status code, raw body and correlation id
      */
     public Map<String, Object> get(SkattedataProperties.ApiConfig api, String path, Map<String, String> queryParams) {
-        String korrelasjonsid = generateKorrelasjonsid();
+        String correlationId = generateCorrelationId();
         UriComponentsBuilder uri = UriComponentsBuilder.fromUriString(api.baseUrl() + path);
         queryParams.forEach(uri::queryParam);
 
@@ -60,7 +68,7 @@ public class SkattedataClient {
                 .uri(uri.build().toUri())
                 .headers(h -> {
                     h.setBearerAuth(tokenProvider.getAccessToken(api.scope()));
-                    h.set("Korrelasjonsid", korrelasjonsid);
+                    h.set("Korrelasjonsid", correlationId);
                     h.setAccept(List.of(MediaType.APPLICATION_JSON));
                 })
                 .retrieve()
@@ -68,17 +76,15 @@ public class SkattedataClient {
                 })
                 .toEntity(String.class);
 
-        LOG.info("GET {} -> {} (korrelasjonsid={})", uri.toUriString(), response.getStatusCode().value(), korrelasjonsid);
+        LOG.info("GET {} -> {} (korrelasjonsid={})", uri.toUriString(), response.getStatusCode().value(), correlationId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", response.getStatusCode().value());
         result.put("body", response.getBody());
-        result.put("korrelasjonsid", korrelasjonsid);
+        result.put("korrelasjonsid", correlationId);
         return result;
     }
 
-    private static String generateKorrelasjonsid() {
-        return OffsetDateTime.now(ZoneOffset.UTC).format(KORRELASJONSID_FMT) + "-"
-                + Integer.toString(ThreadLocalRandom.current().nextInt(0x10000, 0x100000), 16)
-                + "-" + UUID.randomUUID();
+    private static String generateCorrelationId() {
+        return UUID.randomUUID().toString();
     }
 }

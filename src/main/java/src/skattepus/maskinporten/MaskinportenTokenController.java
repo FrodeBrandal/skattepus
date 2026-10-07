@@ -10,9 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Enkleste moglege test av Maskinporten-oppslutning: hentar access_token for dei
- * konfigurerte tilgangane og returnerar token samt dekode JWT-claims slik at ein kan
- * verifisere scope, utsteder, audience og ekspirasjon.
+ * Simplest possible test of the Maskinporten connection: fetches an access token for
+ * the configured scope and returns the token together with the decoded JWT claims, so
+ * the caller can verify scope, issuer, audience and expiry.
  */
 @RestController
 @RequestMapping("/maskinporten")
@@ -23,18 +23,18 @@ public class MaskinportenTokenController {
     /**
      * Constructs the controller.
      *
-     * @param accessTokenProvider the provider fetching tokens from Maskinporten
+     * @param accessTokenProvider provider fetching tokens from Maskinporten
      */
     public MaskinportenTokenController(MaskinportenAccessTokenProvider accessTokenProvider) {
         this.accessTokenProvider = accessTokenProvider;
     }
 
     /**
-     * Fetches an access_token and returns it together with the decoded JWT claims
+     * Fetches an access token and returns it together with the decoded JWT claims
      * (iss, aud, scope, exp and so on).
      *
-     * @return token response with access token and decoded claims
-     * @throws IllegalArgumentException if the returned token is not a valid signed JWT
+     * @return token response with the access token and the decoded claims
+     * @throws IllegalArgumentException if the response is not a valid signed JWT
      */
     @GetMapping("/token")
     public Map<String, Object> token() {
@@ -49,7 +49,7 @@ public class MaskinportenTokenController {
         try {
             return SignedJWT.parse(jwt).getJWTClaimsSet().toJSONObject();
         } catch (ParseException e) {
-            throw new IllegalArgumentException("Responsen var ikkje ein gyldig signert JWT", e);
+            throw new IllegalArgumentException("Response was not a valid signed JWT", e);
         }
     }
 }

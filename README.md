@@ -26,15 +26,15 @@ Ingen data blir lagra — dette er reine probe-kall.
 | Krav | Kor fran |
 |---|---|
 | Privatnøkkel (PEM, PKCS#8) | `src/main/resources/keys/maskinporten-test-private.pem` — **ikkje i git**, holdast lokalt |
-| Public key registrert i Maskinporten-portalen | gir oss ein **KEYID** (fingeravtrykk) |
+| Public key registrert i Maskinporten-portalen | gir oss ein **KEYID** (UUID — ikkje fingeravtrykket) |
 | Client-id | Maskinporten-portalen (var test-klient) |
 | Tildelte scope | Skatteetaten tildeler per verksemd — sjå `rettighetspakke-innsyn.skatteetaten.no` |
 
-Noverande status: client-id, privatnøkkel og KEYID er på plass (token-signering
-blir godteken av Maskinporten). Att står å få **tildelt scopene til klienten** —
-foreløpig svarar Maskinporten «Consumer has not been granted access to the
-scope skatteetaten:mvamelding». Test-scope utan `/test`-suffiks er det som gjeld
-(`/test`-varianten blir avvist som ugyldig).
+Noverande status: client-id, privatnøkkel og KEYID er på plass, og tre av fire
+scope er tildelte klienten (aksjebeholdning, aksjonaer, naeringsspesifikasjon).
+Att står å få **tildelt `skatteetaten:mvafastsetting`** — Maskinporten svarar
+MP-200 `invalid scopes for client`. Test-scope utan `/test`-suffiks er det som
+gjeld (`/test`-varianten blir avvist som ugyldig).
 
 ## Oppsett lokalt
 
@@ -46,7 +46,7 @@ scope skatteetaten:mvamelding». Test-scope utan `/test`-suffiks er det som gjel
      maskinporten:
        client-id: <client-id fra Maskinporten-portalen>
        key-id: <KEYID fra portalen>
-       scope: skatteetaten:mvamelding   # brukast berre av /maskinporten/token
+       scope: skatteetaten:aksjebeholdning   # brukast berre av /maskinporten/token
    ```
    Fila lastast via `spring.config.import` i `application.properties` og
    **eig alle hemmelegheiter** — ingen secret-verdien skal stå i properties-fila.
@@ -63,13 +63,88 @@ Base-URL og scope per API ligg i `application.properties` under
 | `aksjebeholdning` | `skatteetaten:aksjebeholdning` | `/person/{rettighetspakke}/{kalenderaar}/{ident}` (også `/virksomhet/...`) |
 | `aksjonaer` | `skatteetaten:aksjonaer` | `/{rettighetspakke}/aksjonaerer/{organisasjonsnummer}` |
 | `naeringsspesifikasjon` | `skatteetaten:naeringsspesifikasjon` | `/{rettighetspakke}/{inntektsaar}/{ident}` |
-| `mvamelding` | `skatteetaten:mvamelding` | `/{rettighetspakke}/meldinger/{referanse}` |
-| `mvafastsetting` | `skatteetaten:mvafastsetting` | **enno ikkje tildelt** — kommentert ut i properties |
+| `mvafastsetting` | `skatteetaten:mvafastsetting` | `/{rettighetspakke}/fastsettinger/{organisasjonsnummer}` + query `fraOgMed`/`tilOgMed` |
 
-`{rettighetspakke}` er ein **sti**-parameter (t.d. `frivillighetstotte`), ikkje
-det same som scope. Verdiane fins i Skatteetaten sin rettighetspakke-innsyn.
+`{rettighetspakke}` er ein **sti**-parameter, ikkje det same som scope. Lista
+over pakker som skal testast (for Lottstift: `lottstiftFrivillighetsstoette` og
+`lottstiftStiftelsestilsyn`) ligg som hemmelegheit i `keys/secret.yml` under
+`skattepus.maskinporten.rights-packages` — **alle API-testane køyrer éin
+dynami test per pakke** (`@TestFactory` + `forEveryRightsPackage`).
 
-## Test-endepunkt
+## Testar — berre reelle kall
+
+Det finst eitt einaste testlag, og det blir **ikkje mocka noko** — korkje HTTP eller
+Maskinporten. Kvar testklasse dekkjer eitt API og arvar `AbstractSkatteetatenTest`
+(`callApi` + testdata + feiltydning):
+
+| Testklasse | API |
+|---|---|
+| `MaskinportenTokenTest` | token for configurert scope + alle API-scope |
+| `AksjebeholdningTest` | `aksjebeholdning` |
+| `AksjonaerIVerksemdTest` | `aksjonaer` |
+| `NaeringsspesifikasjonTest` | `naeringsspesifikasjon` |
+| `MvaFastsettingTest` | `mvafastsetting` |
+
+Alle køyrer ekte privatnøkkel, ekte client-id/KEYID frå `keys/secret.yml` og ekte
+HTTP mot `*.skatteetaten-test.no`. Dei fire API-testane er `@TestFactory` som
+opnar **éin dynamisk test per rettighetspakke** frå `secret.yml` — altså 4 API ×
+2 pakker = 8 reelle API-kall.
+
+Derfor krev `./mvnw test` hemmelegheiter på disk og nettverk. Ein CI-pipeline utan
+nøklar vil difor feile, og det er meint: ein grønn test skal vere eit reellt
+oppkoblingsbevis, ikkje eit mock-bevis.
+
+Testdata (fnr/orgnr/referanse/år) ligg i **`src/main/resources/keys/live-testdata.properties`**
+— ei git-ignorert fil ved sidan av `secret.yml`, altså **ingen miljøvariellar**:
+
+```properties
+year=2025                                   # merk årsgatelynda, sjå under
+person.ident=06854699537                    # fnr med aksjebeholdning-data
+orgnr=313136841                             # orgnr med aksjonær-data
+naering.ident=14895398862                   # ident med næringsspesifikasjon (valfri — fell tilbake på orgnr)
+mva.orgnr=312409852                         # orgnr med mva-fastsetting (valfri — fell tilbake på orgnr)
+mva.year=2021
+```
+
+Kvar API har sine eigne datasett: `naering.ident`/`mva.orgnr` (og `<api>.year`)
+overstyrer dei felles nyklane når dei er fylte ut. Rettighetspakkene ligg
+ikkje her — dei er hemmelege og ligg i `secret.yml`.
+
+Køyr:
+
+```
+./mvnw clean test
+```
+
+Bruk `clean` første gong etter endringar i test-ressursar: ein gammel
+`target/test-classes/application.properties` ligg att etter sletta filer og
+**skyggjer** `application.properties` i main — då blir hemmelegdene frå
+`secret.yml` borte og testane feilar med `test-client-id`.
+
+Testen skriv status + rå body for kvart API til stdout, og prøver token for
+kvart konfigurert scope. **Ingen testar blir hoppa over** — alt som ikkje verkar,
+feilar med ei melding som forklarer årsaka og kva som må gjerast:
+
+| Feil | Meldinga forklarar |
+|---|---|
+| `MP-250 invalid_scope` | scope-et er ikkje tildelt klienten — be Skatteetaten tildele det i test-miljøet |
+| `MP-100 invalid_grant` | assertion avvist — feil client-id, KEYID eller privatnøkkel |
+| `400 … rettighetspakke er ugyldig` | token er godteken, men `{rettighetspakke}` er gal — rett `rights.package` |
+| `401` / `403` | scope dekkjer ikkje API-et / manglande delegasjon i Altinn |
+| `404` | oppgitt fnr/orgnr/referanse har ikkje data — bytt testdata |
+| `5xx` | feil hos Skatteetaten — bruk korrelasjonsid i melding til deira support |
+| manglande testdata | kva nøkkel som manglar i fila, og kvar ein finn verdien |
+| `ABE-006`/`AIV-006`/`NS-006` «…år er ugyldig» | **årsgatelynde**: testmiljøet serverer berre nyare år (2025 per okt 2026), sjolv om Test-fanen i dokumenta listar eldre |
+| `ABE-005` (403) | året slepp gjennom, men datasettet er ikkje autorisert for klienten/rettighetspakken — be Skatteetaten om tildeling |
+
+**Status på live-testane (okt 2026):** `aksjonaer` (orgnr 313136841, 2025),
+`naeringsspesifikasjon` (ident 14895398862, 2025) og `mvafastsetting`
+(orgnr 312409852, 2021) er **grøne med ekte data for begge rettighetspakkene**.
+Einaste attståande blokkering: aksjebeholdning-datasettet gir `ABE-005` 403 for
+året som slepp gjennom årsgatelynda (begge pakker) — klienten er ikkje autorisert
+for fnr 06854699537, sjå Spørsmål til Skatteetaten.
+
+## Manuell probe (same endpoints som live-testen)
 
 | Kall | Meining |
 |---|---|
@@ -80,19 +155,21 @@ det same som scope. Verdiane fins i Skatteetaten sin rettighetspakke-innsyn.
 Døme:
 
 ```
-curl "http://localhost:8080/skattedata/aksjonaer?rettighetspakke=frivillighetstotte&organisasjonsnummer=222222222&kalenderaar=2024"
+curl "http://localhost:8080/skattedata/aksjonaer?rettighetspakke=lottstiftFrivillighetsstoette&organisasjonsnummer=313136841&kalenderaar=2025"
 ```
 
 Svar: `{"status":200,"body":"{...}","korrelasjonsid":"..."}` — eller
-`{"status":"FEIL","feilmelding":"..."}` med rotarsaka (t.d. avvist
+`{"status":"ERROR","errorMessage":"..."}` med rotarsaka (t.d. avvist
 Maskinporten-token), slik at feil kan lesast utan å sla opp i loggen.
 
 ## Testdata
 
-Testdata i Skatteetaten sitt testmiljo finst gjennom
-[Tenor testdatasok](https://www.skatteetaten.no/skjema/testdata/).
-Merk: for `mvamelding` finst det enno ikkje Tenor-sok — referansar ma hentast
-frå Skatteetaten si hendelsesliste.
+Desse API-a har **ikkje** Tenor-søk — gyldig testdata ligg i **Test-fanen** i
+dokumentasjonen for kvart API, t.d.
+[aksjebeholdning](https://skatteetaten.github.io/api-dokumentasjon/api/aksjebeholdning?tab=Test)
+og [mvafastsetting](https://skatteetaten.github.io/api-dokumentasjon/api/mvafastsetting?tab=Test).
+Merk at tabellen kan vere utdatert: årsgatelynde i testmiljøet serverer berre
+nyare år enn det som står der.
 
 ## Feilmeldingar
 

@@ -16,17 +16,17 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 
 /**
- * Spring-konfigurasjon for Maskinporten-oppslutning. Brukar same klient og same
- * oppsettsmønster som anlegg-common-svarut: KS FIKN sin {@code maskinporten-client}
- * med privat nøkel (PEM) og KEYID-frå Maskinporten-portalen i JWS-headeren.
+ * Spring configuration for the Maskinporten setup. Uses the same client and setup
+ * pattern as anlegg-common-svarut: KS FIKN's {@code maskinporten-client} with a
+ * private PEM key and the KEYID from the Maskinporten portal in the JWS header.
  */
 @Configuration
 @EnableConfigurationProperties({MaskinportenProperties.class, SkattedataProperties.class})
 public class MaskinportenConfig {
 
     /**
-     * Bygger Maskinporten-klienten med privat nøkel, audience, token-endepunkt og
-     * KEYID i JWS-headeren, og pakkar han inn i ein access-token-leverandør.
+     * Builds the Maskinporten client with the private key, audience, token endpoint
+     * and KEYID in the JWS header, and wraps it in an access token provider.
      *
      * @param properties the Maskinporten connection properties
      * @return provider that fetches (and caches) access tokens for the configured scope
@@ -35,7 +35,7 @@ public class MaskinportenConfig {
     @Bean
     public MaskinportenAccessTokenProvider accessTokenProvider(MaskinportenProperties properties) throws IOException {
         PrivateKey privateKey = readPrivateKey(Path.of(properties.privateKeyFile()));
-        Maskinportenklient maskinportenklient = Maskinportenklient.builder()
+        Maskinportenklient maskinportenClient = Maskinportenklient.builder()
                 .withPrivateKey(privateKey)
                 .withProperties(MaskinportenklientProperties.builder()
                         .numberOfSecondsLeftBeforeExpire(properties.secondsBeforeExpire())
@@ -47,7 +47,7 @@ public class MaskinportenConfig {
                         .keyID(properties.keyId())
                         .build())
                 .build();
-        return new MaskinportenAccessTokenProvider(maskinportenklient, properties.scope());
+        return new MaskinportenAccessTokenProvider(maskinportenClient, properties.scope());
     }
 
     private static PrivateKey readPrivateKey(Path path) throws IOException {

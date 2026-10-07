@@ -13,9 +13,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Testkontrollar for å verifisere tilgang til Skatteetaten sine API via Maskinporten.
- * Stiltemplate til kvart API ({@code skattepus.skatteetaten.apis.*}) blir fylt ut med
- * parameter du sendar inn; parameter som ikkje inngår i stien, blir query-parameter.
+ * Test controller for verifying access to the Skatteetaten APIs via Maskinporten.
+ * Each API's path template ({@code skattepus.skatteetaten.apis.*}) is filled in with
+ * the parameters you send; parameters not part of the path are sent as query parameters.
  */
 @RestController
 @RequestMapping("/skattedata")
@@ -29,8 +29,8 @@ public class SkattedataTestController {
     /**
      * Constructs the controller.
      *
-     * @param properties konfigurerte Skatteetaten-API
-     * @param client     Bearer-token-klient som utfører dei eigentlege kalla
+     * @param properties the configured Skatteetaten APIs
+     * @param client     Bearer token client performing the actual calls
      */
     public SkattedataTestController(SkattedataProperties properties, SkattedataClient client) {
         this.properties = properties;
@@ -38,9 +38,9 @@ public class SkattedataTestController {
     }
 
     /**
-     * Listar dei konfigurerte API-enda med scope, base-URL og stiltemplate.
+     * Lists the configured APIs with scope, base URL and path template.
      *
-     * @return kart over API-nytsel til konfigurasjon
+     * @return map from API name to configuration
      */
     @GetMapping("/apis")
     public Map<String, SkattedataProperties.ApiConfig> apis() {
@@ -48,22 +48,22 @@ public class SkattedataTestController {
     }
 
     /**
-     * Utfører eit test-kall mot det valde API-et. Parameter som svarer til ein
-     * {placeholder} i stiltemplateet blir sett inn i stien (uttom URL-koding),
-     * resten blir sende som query-parameter.
+     * Performs a test call against the selected API. Parameters matching a
+     * {placeholder} in the path template are inserted into the path (without URL
+     * encoding); the rest are sent as query parameters.
      *
-     * @param api   navn på API-et, sjå {@code /skattedata/apis}
-     * @param params parameter for stiltemplateet og eventuelle query-parameter
-     * @return statuskode, rå respons-body og Korrelasjonsid; ved feil (t.d. avvist
-     *         Maskinporten-token) returneres status "FEIL" med rotårsaka
-     * @throws IllegalArgumentException viss API-et ikkje er konfigurert
-     * @throws IllegalStateException    viss obligatoriske plasesholdarar manglar
+     * @param api    name of the API, see {@code /skattedata/apis}
+     * @param params parameters for the path template and any query parameters
+     * @return status code, raw response body and Korrelasjonsid; on failure (e.g. a
+     *         rejected Maskinporten token) status ERROR with the root cause
+     * @throws IllegalArgumentException if the API is not configured
+     * @throws IllegalStateException    if required placeholders are missing
      */
     @GetMapping("/{api}")
     public Map<String, Object> call(@PathVariable String api, @RequestParam Map<String, String> params) {
         SkattedataProperties.ApiConfig config = properties.apis().get(api);
         if (config == null) {
-            throw new IllegalArgumentException("Ukjent API '" + api + "', kjende: " + properties.apis().keySet());
+            throw new IllegalArgumentException("Unknown API '" + api + "', known: " + properties.apis().keySet());
         }
         Map<String, String> remaining = new LinkedHashMap<>(params);
         String path = fillTemplate(config.pathTemplate(), remaining);
@@ -71,8 +71,8 @@ public class SkattedataTestController {
             return client.get(config, path, remaining);
         } catch (RuntimeException e) {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("status", "FEIL");
-            result.put("feilmelding", rootCauseMessage(e));
+            result.put("status", "ERROR");
+            result.put("errorMessage", rootCauseMessage(e));
             return result;
         }
     }
@@ -93,7 +93,7 @@ public class SkattedataTestController {
             String name = matcher.group(1);
             String value = params.get(name);
             if (value == null) {
-                throw new IllegalStateException("Mangler parameter '" + name + "' for stiltemplate " + template);
+                throw new IllegalStateException("Missing parameter '" + name + "' for path template " + template);
             }
             used.add(name);
             matcher.appendReplacement(sb, Matcher.quoteReplacement(value));
