@@ -30,10 +30,9 @@ Ingen data blir lagra — dette er reine probe-kall.
 | Client-id | Maskinporten-portalen (var test-klient) |
 | Tildelte scope | Skatteetaten tildeler per verksemd — sjå `rettighetspakke-innsyn.skatteetaten.no` |
 
-Noverande status: client-id, privatnøkkel og KEYID er på plass, og tre av fire
-scope er tildelte klienten (aksjebeholdning, aksjonaer, naeringsspesifikasjon).
-Att står å få **tildelt `skatteetaten:mvafastsetting`** — Maskinporten svarar
-MP-200 `invalid scopes for client`. Test-scope utan `/test`-suffiks er det som
+Noverande status: client-id, privatnøkkel og KEYID er på plass, og **alle fire
+scope er tildelte klienten** (aksjebeholdning, aksjonaer, naeringsspesifikasjon,
+mvafastsetting). Test-scope utan `/test`-suffiks er det som
 gjeld (`/test`-varianten blir avvist som ugyldig).
 
 ## Oppsett lokalt
@@ -41,13 +40,14 @@ gjeld (`/test`-varianten blir avvist som ugyldig).
 1. Plasser privatnøkkelen som `src/main/resources/keys/maskinporten-test-private.pem`
    (eller peik ein annan filsti via `skattepus.maskinporten.private-key-file`).
 2. Lag `src/main/resources/keys/secret.yml` (allereie git-ignorert) med:
-   ```yaml
-   skattepus:
-     maskinporten:
-       client-id: <client-id fra Maskinporten-portalen>
-       key-id: <KEYID fra portalen>
-       scope: skatteetaten:aksjebeholdning   # brukast berre av /maskinporten/token
-   ```
+    ```yaml
+    skattepus:
+      maskinporten:
+        client-id: <client-id fra Maskinporten-portalen>
+        key-id: <KEYID fra portalen>
+        scope: skatteetaten:aksjebeholdning   # brukast berre av /maskinporten/token
+        rights-packages: <pakke1>,<pakke2>    # rettighetspakkene alle API-testane køyrer mot
+    ```
    Fila lastast via `spring.config.import` i `application.properties` og
    **eig alle hemmelegheiter** — ingen secret-verdien skal stå i properties-fila.
 3. Køyr: `./mvnw spring-boot:run` (porter 8080).
@@ -69,7 +69,7 @@ Base-URL og scope per API ligg i `application.properties` under
 over pakker som skal testast (for Lottstift: `lottstiftFrivillighetsstoette` og
 `lottstiftStiftelsestilsyn`) ligg som hemmelegheit i `keys/secret.yml` under
 `skattepus.maskinporten.rights-packages` — **alle API-testane køyrer éin
-dynami test per pakke** (`@TestFactory` + `forEveryRightsPackage`).
+dynamisk test per pakke** (`@TestFactory` + `forEveryRightsPackage`).
 
 ## Testar — berre reelle kall
 
@@ -94,12 +94,12 @@ Derfor krev `./mvnw test` hemmelegheiter på disk og nettverk. Ein CI-pipeline u
 nøklar vil difor feile, og det er meint: ein grønn test skal vere eit reellt
 oppkoblingsbevis, ikkje eit mock-bevis.
 
-Testdata (fnr/orgnr/referanse/år) ligg i **`src/main/resources/keys/live-testdata.properties`**
+Testdata (fnr/orgnr/år) ligg i **`src/main/resources/keys/live-testdata.properties`**
 — ei git-ignorert fil ved sidan av `secret.yml`, altså **ingen miljøvariellar**:
 
 ```properties
 year=2025                                   # merk årsgatelynda, sjå under
-person.ident=06854699537                    # fnr med aksjebeholdning-data
+person.ident=06854699537                    # fnr frå Test-fanen (ventar datasett-autorisasjon, sjå status)
 orgnr=313136841                             # orgnr med aksjonær-data
 naering.ident=14895398862                   # ident med næringsspesifikasjon (valfri — fell tilbake på orgnr)
 mva.orgnr=312409852                         # orgnr med mva-fastsetting (valfri — fell tilbake på orgnr)
@@ -121,17 +121,19 @@ Bruk `clean` første gong etter endringar i test-ressursar: ein gammel
 **skyggjer** `application.properties` i main — då blir hemmelegdene frå
 `secret.yml` borte og testane feilar med `test-client-id`.
 
-Testen skriv status + rå body for kvart API til stdout, og prøver token for
-kvart konfigurert scope. **Ingen testar blir hoppa over** — alt som ikkje verkar,
-feilar med ei melding som forklarer årsaka og kva som må gjerast:
+Testen skriv status + rå body for kvart API til stdout, deserialiserer svaret
+til typa recordar og skriv ei `[LIVE] MOTTOK`-kvittering med dei faktiske tala
+vi tek imot (tal aksjonærer, sum avgift, driftskostnad/osb.), og prøver token
+for kvart konfigurert scope. **Ingen testar blir hoppa over** — alt som ikkje
+verkar, feilar med ei melding som forklarer årsaka og kva som må gjerast:
 
 | Feil | Meldinga forklarar |
 |---|---|
-| `MP-250 invalid_scope` | scope-et er ikkje tildelt klienten — be Skatteetaten tildele det i test-miljøet |
+| `MP-250`/`MP-200 invalid_scope` | scope-et er ikkje tildelt klienten — be Skatteetaten tildele det i test-miljøet |
 | `MP-100 invalid_grant` | assertion avvist — feil client-id, KEYID eller privatnøkkel |
-| `400 … rettighetspakke er ugyldig` | token er godteken, men `{rettighetspakke}` er gal — rett `rights.package` |
-| `401` / `403` | scope dekkjer ikkje API-et / manglande delegasjon i Altinn |
-| `404` | oppgitt fnr/orgnr/referanse har ikkje data — bytt testdata |
+| `400 … rettighetspakke er ugyldig` | token er godteken, men `{rettighetspakke}` er gal — rett lista i `secret.yml` |
+| `401` | scope dekkjer ikkje API-et / audience mot feil miljø |
+| `404` | oppgitt fnr/orgnr har ikkje data — bytt testdata |
 | `5xx` | feil hos Skatteetaten — bruk korrelasjonsid i melding til deira support |
 | manglande testdata | kva nøkkel som manglar i fila, og kvar ein finn verdien |
 | `ABE-006`/`AIV-006`/`NS-006` «…år er ugyldig» | **årsgatelynde**: testmiljøet serverer berre nyare år (2025 per okt 2026), sjolv om Test-fanen i dokumenta listar eldre |
@@ -142,7 +144,7 @@ feilar med ei melding som forklarer årsaka og kva som må gjerast:
 (orgnr 312409852, 2021) er **grøne med ekte data for begge rettighetspakkene**.
 Einaste attståande blokkering: aksjebeholdning-datasettet gir `ABE-005` 403 for
 året som slepp gjennom årsgatelynda (begge pakker) — klienten er ikkje autorisert
-for fnr 06854699537, sjå Spørsmål til Skatteetaten.
+for fnr 06854699537, må spørjast Skatteetaten (bruk korrelasjonsid frå testen).
 
 ## Manuell probe (same endpoints som live-testen)
 
@@ -150,7 +152,7 @@ for fnr 06854699537, sjå Spørsmål til Skatteetaten.
 |---|---|
 | `GET /maskinporten/token` | henter token for konfigurert scope og returnerer dekode JWT-claims (iss/aud/scope/exp) |
 | `GET /skattedata/apis` | listar konfigurerte API med scope, base-URL og stiltemplate |
-| `GET /skattedata/{api}?<params>` |oyrer eitt kall mot API-et. Parameter som svarer til ein `{placeholder}` i stien blir sett inn i stien, resten blir query-parameter |
+| `GET /skattedata/{api}?<params>` | gjer eitt kall mot API-et. Parameter som svarer til ein `{placeholder}` i stien blir sett inn i stien, resten blir query-parameter |
 
 Døme:
 
@@ -174,7 +176,8 @@ nyare år enn det som står der.
 ## Feilmeldingar
 
 - `MP-100 invalid_grant / Invalid assertion` — feil client-id, nøkkel eller KEYID
-- `MP-101`/`invalid_scope` — scopet er ikkje tildelt klienten var
+- `MP-200`/`MP-250` `invalid_scope` — scopet er ikkje tildelt klienten
+- `MP-101` — ugyldig scope-format (bruk scope utan miljø-suffiks)
 - API-feilkoder (MFA-/MVA-/ABE-serien) kjem ut i `body` fra test-kallet,
   sjå kvart API si dokumentasjon pa
   [skatteetaten.github.io/api-dokumentasjon](https://skatteetaten.github.io/api-dokumentasjon/)
